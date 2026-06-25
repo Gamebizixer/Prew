@@ -5,7 +5,6 @@
 
 (function(global) {
     'use strict';
-
     // ---------- ابزارهای ریاضی ----------
     const MathUtils = {
         identity: () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
