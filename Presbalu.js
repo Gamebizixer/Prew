@@ -1,720 +1,411 @@
-// ============================================================
-// Prewbalus V2.0 - با مقیاس بزرگ و پرسپکتیو درست
-// ============================================================
+// ================================================================
+// scrollwroks.js - موتور بازی WebGL2 مستقل
+// CDN Address: https://cdn.jsdelivr.net/scrollstudio/scrollwroks.js
+// ================================================================
 
-(function (global) {
+// این ثابت را می‌توانید برای بارگذاری Assets از همان CDN استفاده کنید
+const CDN_BASE = 'https://cdn.jsdelivr.net/scrollstudio/';
+
+(function(global) {
     'use strict';
 
-    // ==================== کلاس‌های ریاضی ====================
-    class Vector3 {
-        constructor(x = 0, y = 0, z = 0) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
-        set(x, y, z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            return this;
-        }
-        clone() { return new Vector3(this.x, this.y, this.z); }
-        add(v) { this.x += v.x;
-            this.y += v.y;
-            this.z += v.z;
-            return this; }
-        sub(v) { this.x -= v.x;
-            this.y -= v.y;
-            this.z -= v.z;
-            return this; }
-        multiplyScalar(s) { this.x *= s;
-            this.y *= s;
-            this.z *= s;
-            return this; }
-        length() { return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z); }
-        normalize() { const l = this.length(); if (l > 0) this.multiplyScalar(1 / l); return this; }
-        dot(v) { return this.x * v.x + this.y * v.y + this.z * v.z; }
-        cross(v) {
-            return new Vector3(
-                this.y * v.z - this.z * v.y,
-                this.z * v.x - this.x * v.z,
-                this.x * v.y - this.y * v.x
-            );
-        }
-        copy(v) { this.x = v.x;
-            this.y = v.y;
-            this.z = v.z;
-            return this; }
-        distanceTo(v) { return this.clone().sub(v).length(); }
-    }
-
-    class Euler {
-        constructor(x = 0, y = 0, z = 0) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
-        clone() { return new Euler(this.x, this.y, this.z); }
-        copy(e) { this.x = e.x;
-            this.y = e.y;
-            this.z = e.z;
-            return this; }
-    }
-
-    // ==================== هندسه‌ها ====================
-    class BoxGeometry {
-        constructor(w = 1, h = 1, d = 1) {
-            this.width = w;
-            this.height = h;
-            this.depth = d;
-            this.faces = [
-                { pos: [0, 0, d / 2], rot: [0, 0, 0], size: [w, h] },
-                { pos: [0, 0, -d / 2], rot: [0, Math.PI, 0], size: [w, h] },
-                { pos: [w / 2, 0, 0], rot: [0, Math.PI / 2, 0], size: [d, h] },
-                { pos: [-w / 2, 0, 0], rot: [0, -Math.PI / 2, 0], size: [d, h] },
-                { pos: [0, -h / 2, 0], rot: [-Math.PI / 2, 0, 0], size: [w, d] },
-                { pos: [0, h / 2, 0], rot: [Math.PI / 2, 0, 0], size: [w, d] }
-            ];
-        }
-    }
-
-    class PlaneGeometry {
-        constructor(w = 1, h = 1) {
-            this.width = w;
-            this.height = h;
-            this.faces = [
-                { pos: [0, 0, 0], rot: [0, 0, 0], size: [w, h] }
-            ];
-        }
-    }
-
-    // ==================== Material ====================
-    class Material {
-        constructor(options = {}) {
-            this.color = options.color || '#ffffff';
-            this.map = options.map || null;
-            this.opacity = options.opacity !== undefined ? options.opacity : 1;
-            this.border = options.border || 'none';
-            this.emissive = options.emissive || false;
-        }
-    }
-
-    // ==================== Object3D ====================
-    class Object3D {
-        constructor() {
-            this.position = new Vector3(0, 0, 0);
-            this.rotation = new Euler(0, 0, 0);
-            this.scale = new Vector3(1, 1, 1);
-            this.parent = null;
-            this.children = [];
-            this.element = null;
-            this.visible = true;
-        }
-        add(child) {
-            if (child.parent) child.parent.remove(child);
-            child.parent = this;
-            this.children.push(child);
-            if (this.element && child.element) this.element.appendChild(child.element);
-        }
-        remove(child) {
-            const i = this.children.indexOf(child);
-            if (i !== -1) {
-                this.children.splice(i, 1);
-                child.parent = null;
-                if (this.element && child.element) this.element.removeChild(child.element);
-            }
-        }
-        getCSSMatrix() {
-            const p = this.position,
-                r = this.rotation,
-                s = this.scale;
-            return `translate3d(${p.x}px,${p.y}px,${p.z}px) rotateX(${r.x}rad) rotateY(${r.y}rad) rotateZ(${r.z}rad) scale3d(${s.x},${s.y},${s.z})`;
-        }
-        updateTransform() {
-            if (this.element && this.visible) {
-                this.element.style.transform = this.getCSSMatrix();
-                this.element.style.display = 'block';
-            } else if (this.element) {
-                this.element.style.display = 'none';
-            }
-        }
-        rotateX(a) { this.rotation.x += a; return this; }
-        rotateY(a) { this.rotation.y += a; return this; }
-        rotateZ(a) { this.rotation.z += a; return this; }
-        translate(x, y, z) { this.position.x += x;
-            this.position.y += y;
-            this.position.z += z; return this; }
-    }
-
-    // ==================== Mesh ====================
-    class Mesh extends Object3D {
-        constructor(geometry, material) {
-            super();
-            this.geometry = geometry;
-            this.material = material;
-            this.collider = null;
-            this.body = null;
-            this.build();
-        }
-        build() {
-            const container = document.createElement('div');
-            container.style.cssText = `
-                position: absolute;
-                transform-style: preserve-3d;
-                width: 0;
-                height: 0;
-                top: 0;
-                left: 0;
-                pointer-events: none;
-            `;
-            this.element = container;
-
-            const geo = this.geometry;
-            const mat = this.material;
-
-            geo.faces.forEach(face => {
-                const div = document.createElement('div');
-                const [px, py, pz] = face.pos;
-                const [rx, ry, rz] = face.rot;
-                const [fw, fh] = face.size;
-
-                let bg = mat.color;
-                if (mat.map) bg = `url(${mat.map})`;
-
-                div.style.cssText = `
-                    position: absolute;
-                    width: ${fw}px;
-                    height: ${fh}px;
-                    background: ${bg};
-                    background-size: cover;
-                    border: ${mat.border};
-                    opacity: ${mat.opacity};
-                    transform: translate3d(${px}px,${py}px,${pz}px) rotateX(${rx}rad) rotateY(${ry}rad) rotateZ(${rz}rad);
-                    backface-visibility: visible;
-                    box-sizing: border-box;
-                    ${mat.emissive ? 'box-shadow: inset 0 0 30px rgba(255,255,255,0.5);' : ''}
-                `;
-                container.appendChild(div);
-            });
-        }
-    }
-
-    // ==================== Sprite ====================
-    class Sprite extends Object3D {
-        constructor(options = {}) {
-            super();
-            this.texture = options.texture || null;
-            this.width = options.width || 64;
-            this.height = options.height || 64;
-            this.build();
-        }
-        build() {
-            const div = document.createElement('div');
-            div.style.cssText = `
-                position: absolute;
-                width: ${this.width}px;
-                height: ${this.height}px;
-                background: ${this.texture ? `url(${this.texture})` : '#ff00ff'};
-                background-size: cover;
-                pointer-events: none;
-                transform-style: preserve-3d;
-            `;
-            this.element = div;
-        }
-    }
-
-    // ==================== PhysicsBody ====================
-    class PhysicsBody {
-        constructor(options = {}) {
-            this.velocity = new Vector3(0, 0, 0);
-            this.gravity = options.gravity !== undefined ? options.gravity : -20;
-            this.mass = options.mass || 1;
-            this.isGrounded = false;
-            this.useGravity = options.useGravity !== undefined ? options.useGravity : true;
-            this.friction = options.friction || 0.9;
-        }
-        applyForce(force) { this.velocity.add(force.clone().multiplyScalar(1 / this.mass)); }
-        update(dt) {
-            if (this.useGravity) this.velocity.y += this.gravity * dt;
-            this.velocity.x *= (1 - (1 - this.friction) * dt);
-            this.velocity.z *= (1 - (1 - this.friction) * dt);
-        }
-    }
-
-    // ==================== Collision ====================
-    class Collision {
-        static AABB(a, b) {
-            if (!a.collider || !b.collider) return false;
-            const pa = a.position,
-                pb = b.position;
-            const ha = a.collider,
-                hb = b.collider;
-            const ax = pa.x - ha.width / 2,
-                bx = pa.x + ha.width / 2;
-            const ay = pa.y - ha.height / 2,
-                by = pa.y + ha.height / 2;
-            const az = pa.z - ha.depth / 2,
-                bz = pa.z + ha.depth / 2;
-            const cx = pb.x - hb.width / 2,
-                dx = pb.x + hb.width / 2;
-            const cy = pb.y - hb.height / 2,
-                dy = pb.y + hb.height / 2;
-            const cz = pb.z - hb.depth / 2,
-                dz = pb.z + hb.depth / 2;
-            return (ax < dx && bx > cx && ay < dy && by > cy && az < dz && bz > cz);
-        }
-        static resolveAABB(a, b) {
-            if (!Collision.AABB(a, b)) return null;
-            const pa = a.position,
-                pb = b.position;
-            const ha = a.collider,
-                hb = b.collider;
-            const overlapX = (ha.width / 2 + hb.width / 2) - Math.abs(pa.x - pb.x);
-            const overlapY = (ha.height / 2 + hb.height / 2) - Math.abs(pa.y - pb.y);
-            const overlapZ = (ha.depth / 2 + hb.depth / 2) - Math.abs(pa.z - pb.z);
-            let min = Math.min(overlapX, overlapY, overlapZ);
-            let dir = new Vector3();
-            if (min === overlapX) dir.x = (pa.x > pb.x) ? 1 : -1;
-            else if (min === overlapY) dir.y = (pa.y > pb.y) ? 1 : -1;
-            else dir.z = (pa.z > pb.z) ? 1 : -1;
-            return { overlap: min, direction: dir };
-        }
-    }
-
-    // ==================== Raycaster ====================
-    class Raycaster {
-        constructor() { this.ray = { origin: new Vector3(), direction: new Vector3() }; }
-        set(origin, direction) { this.ray.origin.copy(origin);
-            this.ray.direction.copy(direction).normalize(); }
-        intersectObjects(objects) {
-            const results = [];
-            for (const obj of objects) {
-                if (!obj.collider) continue;
-                const hit = this._intersectAABB(obj);
-                if (hit) results.push({ object: obj, distance: hit.distance, point: hit.point });
-            }
-            results.sort((a, b) => a.distance - b.distance);
-            return results;
-        }
-        _intersectAABB(obj) {
-            const pos = obj.position;
-            const half = { x: obj.collider.width / 2, y: obj.collider.height / 2, z: obj.collider.depth / 2 };
-            const origin = this.ray.origin,
-                dir = this.ray.direction;
-            let t1 = (-half.x - (pos.x - origin.x)) / dir.x;
-            let t2 = (half.x - (pos.x - origin.x)) / dir.x;
-            let t3 = (-half.y - (pos.y - origin.y)) / dir.y;
-            let t4 = (half.y - (pos.y - origin.y)) / dir.y;
-            let t5 = (-half.z - (pos.z - origin.z)) / dir.z;
-            let t6 = (half.z - (pos.z - origin.z)) / dir.z;
-            let tmin = Math.max(Math.min(t1, t2), Math.min(t3, t4), Math.min(t5, t6));
-            let tmax = Math.min(Math.max(t1, t2), Math.max(t3, t4), Math.max(t5, t6));
-            if (tmax < 0 || tmin > tmax) return null;
-            const distance = tmin > 0 ? tmin : tmax;
-            const point = origin.clone().add(dir.clone().multiplyScalar(distance));
-            return { distance, point };
-        }
-    }
-
-    // ==================== Camera ====================
-    class Camera {
-        constructor(options = {}) {
-            this.position = new Vector3(0, 0, 0);
-            this.rotation = new Euler(0, 0, 0);
-            this.fov = options.fov || 60;
-            this.near = options.near || 0.1;
-            this.far = options.far || 1000;
-            this.aspect = 1;
-        }
-        getCSSMatrix() {
-            const p = this.position,
-                r = this.rotation;
-            return `translate3d(${-p.x}px,${-p.y}px,${-p.z}px) rotateX(${r.x}rad) rotateY(${r.y}rad) rotateZ(${r.z}rad)`;
-        }
-        updateAspect(w, h) { this.aspect = w / h; }
-        getForward() {
-            const e = this.rotation;
-            const cx = Math.cos(e.x),
-                sx = Math.sin(e.x);
-            const cy = Math.cos(e.y),
-                sy = Math.sin(e.y);
-            return new Vector3(-sy * cx, sx, cy * cx).normalize();
-        }
-        getRight() {
-            const e = this.rotation;
-            const cy = Math.cos(e.y),
-                sy = Math.sin(e.y);
-            return new Vector3(cy, 0, sy).normalize();
-        }
-    }
-
-    // ==================== FPSController ====================
-    class FPSController {
-        constructor(camera, options = {}) {
-            this.camera = camera;
-            this.speed = options.speed || 5;
-            this.sprintSpeed = options.sprintSpeed || 8;
-            this.jumpSpeed = options.jumpSpeed || 6;
-            this.mouseSensitivity = options.mouseSensitivity || 0.002;
-            this.yaw = 0;
-            this.pitch = 0;
-            this.body = new PhysicsBody({ gravity: -20, mass: 1 });
-            this.body.useGravity = true;
-            this.isOnGround = false;
-        }
-        update(dt, keys, mouseDelta) {
-            if (mouseDelta) {
-                this.yaw -= mouseDelta.x * this.mouseSensitivity;
-                this.pitch -= mouseDelta.y * this.mouseSensitivity;
-                this.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, this.pitch));
-                this.camera.rotation.x = this.pitch;
-                this.camera.rotation.y = this.yaw;
-            }
-            const forward = this.camera.getForward();
-            const right = this.camera.getRight();
-            const move = new Vector3(0, 0, 0);
-            let speed = keys['Shift'] ? this.sprintSpeed : this.speed;
-            if (keys['w'] || keys['W']) move.add(forward);
-            if (keys['s'] || keys['S']) move.sub(forward);
-            if (keys['a'] || keys['A']) move.sub(right);
-            if (keys['d'] || keys['D']) move.add(right);
-            if (move.length() > 0) move.normalize().multiplyScalar(speed);
-            this.body.velocity.x = move.x;
-            this.body.velocity.z = move.z;
-            if ((keys[' '] || keys['Space']) && this.isOnGround) {
-                this.body.velocity.y = this.jumpSpeed;
-                this.isOnGround = false;
-            }
-            this.body.update(dt);
-            this.camera.position.x += this.body.velocity.x * dt;
-            this.camera.position.y += this.body.velocity.y * dt;
-            this.camera.position.z += this.body.velocity.z * dt;
-        }
-    }
-
-    // ==================== ParticleEmitter ====================
-    class ParticleEmitter {
-        constructor(options = {}) {
-            this.count = options.count || 100;
-            this.life = options.life || 2;
-            this.speed = options.speed || 50;
-            this.color = options.color || '#ffaa44';
-            this.size = options.size || 4;
-            this.particles = [];
-            this.element = document.createElement('div');
-            this.element.style.cssText =
-                'position:absolute;top:0;left:0;transform-style:preserve-3d;pointer-events:none;width:0;height:0;';
-            this._init();
-        }
-        _init() {
-            for (let i = 0; i < this.count; i++) {
-                const p = document.createElement('div');
-                p.style.cssText = `
-                    position:absolute;
-                    width:${this.size}px;
-                    height:${this.size}px;
-                    background:${this.color};
-                    border-radius:50%;
-                    opacity:0;
-                    transform:translate3d(0,0,0);
-                `;
-                this.element.appendChild(p);
-                this.particles.push({
-                    el: p,
-                    life: Math.random() * this.life,
-                    maxLife: this.life,
-                    vel: new Vector3((Math.random() - 0.5) * this.speed, (Math.random() - 0.5) * this.speed, (Math.random() - 0.5) * this
-                        .speed),
-                    pos: new Vector3(0, 0, 0)
-                });
-            }
-        }
-        emit(position, count = 10) {
-            let emitted = 0;
-            for (const p of this.particles) {
-                if (p.life <= 0 && emitted < count) {
-                    p.life = p.maxLife;
-                    p.pos.copy(position);
-                    p.vel.set((Math.random() - 0.5) * this.speed, (Math.random() - 0.5) * this.speed, (Math.random() - 0.5) * this
-                        .speed);
-                    emitted++;
+    // ---------- ابزارهای ریاضی ----------
+    const MathUtils = {
+        identity: () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
+        multiply: (a, b) => {
+            const r = new Array(16);
+            for (let i=0; i<4; i++) {
+                for (let j=0; j<4; j++) {
+                    let sum = 0;
+                    for (let k=0; k<4; k++) sum += a[i*4+k] * b[k*4+j];
+                    r[i*4+j] = sum;
                 }
             }
+            return r;
+        },
+        perspective: (fov, aspect, near, far) => {
+            const f = 1 / Math.tan(fov/2);
+            const nf = 1 / (near - far);
+            return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0];
+        },
+        lookAt: (eye, target, up) => {
+            const [ex,ey,ez] = eye, [tx,ty,tz] = target, [ux,uy,uz] = up;
+            let zx = ex-tx, zy = ey-ty, zz = ez-tz;
+            let len = Math.hypot(zx,zy,zz); zx/=len; zy/=len; zz/=len;
+            let xx = uy*zz - uz*zy, xy = uz*zx - ux*zz, xz = ux*zy - uy*zx;
+            len = Math.hypot(xx,xy,xz); xx/=len; xy/=len; xz/=len;
+            let yx = zy*xz - zz*xy, yy = zz*xx - zx*xz, yz = zx*xy - zy*xx;
+            return [xx,xy,xz,0, yx,yy,yz,0, zx,zy,zz,0,
+                    -(xx*ex+xy*ey+xz*ez), -(yx*ex+yy*ey+yz*ez), -(zx*ex+zy*ey+zz*ez), 1];
+        },
+        translate: (m, x, y, z) => {
+            const r = m.slice();
+            r[12] += r[0]*x + r[4]*y + r[8]*z;
+            r[13] += r[1]*x + r[5]*y + r[9]*z;
+            r[14] += r[2]*x + r[6]*y + r[10]*z;
+            return r;
         }
-        update(dt) {
-            for (const p of this.particles) {
-                p.life -= dt;
-                if (p.life > 0) {
-                    p.pos.add(p.vel.clone().multiplyScalar(dt));
-                    const s = 1 - (p.life / p.maxLife);
-                    p.el.style.transform = `translate3d(${p.pos.x}px,${p.pos.y}px,${p.pos.z}px)`;
-                    p.el.style.opacity = 1 - s;
-                    const size = this.size * (1 + s * 2);
-                    p.el.style.width = size + 'px';
-                    p.el.style.height = size + 'px';
-                } else {
-                    p.el.style.opacity = 0;
-                }
-            }
+    };
+
+    // ---------- WebGL کمکی ----------
+    function createShader(gl, src, type) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+            console.error(gl.getShaderInfoLog(s));
+            return null;
         }
+        return s;
     }
 
-    // ==================== AudioSystem ====================
-    class AudioSystem {
-        constructor() {
-            this.context = new(window.AudioContext || window.webkitAudioContext)();
-            this.buffers = {};
+    function createProgram(gl, vSrc, fSrc) {
+        const vs = createShader(gl, vSrc, gl.VERTEX_SHADER);
+        const fs = createShader(gl, fSrc, gl.FRAGMENT_SHADER);
+        const p = gl.createProgram();
+        gl.attachShader(p, vs);
+        gl.attachShader(p, fs);
+        gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+            console.error(gl.getProgramInfoLog(p));
+            return null;
         }
-        load(url, callback) {
-            fetch(url).then(res => res.arrayBuffer()).then(data => this.context.decodeAudioData(data)).then(buffer => {
-                this.buffers[url] = buffer;
-                if (callback) callback();
-            }).catch(err => console.error('Audio load error:', err));
-        }
-        play(url, volume = 1) {
-            if (!this.buffers[url]) { console.warn('Audio not loaded:', url); return; }
-            const source = this.context.createBufferSource();
-            source.buffer = this.buffers[url];
-            const gain = this.context.createGain();
-            gain.gain.value = volume;
-            source.connect(gain);
-            gain.connect(this.context.destination);
-            source.start(0);
-        }
+        return p;
     }
 
-    // ==================== Scene ====================
+    // ---------- کلاس‌های اصلی ----------
     class Scene {
         constructor() {
-            this.objects = [];
-            this.camera = new Camera();
-            this.group = document.createElement('div');
-            this.group.style.cssText = `
-                transform-style: preserve-3d;
-                width: 0;
-                height: 0;
-                position: absolute;
-                top: 50%;
-                left: 50%;
-            `;
-            this.background = '#1a1a2e';
-            this.colliders = [];
-            this.raycaster = new Raycaster();
+            this.meshes = [];
+            this.lights = [];
+            this.ambientColor = [0.2, 0.2, 0.3];
         }
-        add(object) {
-            this.objects.push(object);
-            if (object.element) this.group.appendChild(object.element);
-            object.parent = this;
-            if (object.collider) this.colliders.push(object);
+        add(mesh) { this.meshes.push(mesh); }
+        addLight(light) { this.lights.push(light); }
+    }
+
+    class Camera {
+        constructor(fov, aspect, near, far) {
+            this.fov = fov;
+            this.aspect = aspect;
+            this.near = near;
+            this.far = far;
+            this.position = [0, 2, 5];
+            this.target = [0, 0, 0];
+            this.up = [0, 1, 0];
+            this.projectionMatrix = MathUtils.perspective(fov, aspect, near, far);
         }
-        remove(object) {
-            const i = this.objects.indexOf(object);
-            if (i !== -1) {
-                this.objects.splice(i, 1);
-                if (object.element && object.element.parentNode === this.group) {
-                    this.group.removeChild(object.element);
-                }
-                object.parent = null;
-                const ci = this.colliders.indexOf(object);
-                if (ci !== -1) this.colliders.splice(ci, 1);
-            }
+        updateProjection() {
+            this.projectionMatrix = MathUtils.perspective(this.fov, this.aspect, this.near, this.far);
         }
-        update(dt) {
-            for (const obj of this.objects) {
-                if (obj.update) obj.update(dt);
-            }
-            for (let i = 0; i < this.colliders.length; i++) {
-                for (let j = i + 1; j < this.colliders.length; j++) {
-                    const a = this.colliders[i];
-                    const b = this.colliders[j];
-                    if (Collision.AABB(a, b)) {
-                        const res = Collision.resolveAABB(a, b);
-                        if (res) {
-                            a.position.add(res.direction.clone().multiplyScalar(res.overlap));
-                            if (a.body) a.body.velocity.multiplyScalar(0.2);
-                            if (b.body) b.body.velocity.multiplyScalar(0.2);
-                            if (a.onCollision) a.onCollision(b);
-                            if (b.onCollision) b.onCollision(a);
-                        }
-                    }
-                }
-            }
-        }
-        render() {
-            this.group.style.transform = this.camera.getCSSMatrix();
-            for (const obj of this.objects) {
-                if (obj instanceof Sprite) {
-                    const dir = this.camera.position.clone().sub(obj.position);
-                    const angle = Math.atan2(dir.x, dir.z);
-                    obj.rotation.y = angle;
-                }
-                obj.updateTransform();
-            }
+        getViewMatrix() {
+            return MathUtils.lookAt(this.position, this.target, this.up);
         }
     }
 
-    // ==================== Engine ====================
-    class Engine {
-        constructor(options = {}) {
-            this.container = options.container || document.body;
-            this.scene = null;
-            this.canvas = null;
-            this.ctx = null;
-            this.running = false;
-            this.lastTime = 0;
-            this.deltaTime = 0;
-            this.keys = {};
-            this.mouse = { deltaX: 0, deltaY: 0, locked: false };
-            this.audio = new AudioSystem();
-
-            this.canvas = document.createElement('canvas');
-            this.canvas.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                pointer-events: none;
-                z-index: 10;
-            `;
-            this.ctx = this.canvas.getContext('2d');
-
-            // 🔥 تنظیم perspective به مقدار بسیار کم برای بزرگ‌نمایی
-            this.cssContainer = document.createElement('div');
-            this.cssContainer.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                perspective: 200px;
-                overflow: hidden;
-                background: #1a1a2e;
-                z-index: 1;
-                transform-style: preserve-3d;
-            `;
-            this.container.appendChild(this.cssContainer);
-            this.container.appendChild(this.canvas);
-
-            this._bindEvents();
-            this._resize();
-            window.addEventListener('resize', () => this._resize());
+    class Mesh {
+        constructor(geometry, material) {
+            this.geometry = geometry;
+            this.material = material;
+            this.position = [0,0,0];
+            this.rotation = [0,0,0];
+            this.scale = [1,1,1];
+            this.modelMatrix = MathUtils.identity();
+            this.updateMatrix();
         }
-
-        _resize() {
-            const w = this.container.clientWidth;
-            const h = this.container.clientHeight;
-            this.canvas.width = w;
-            this.canvas.height = h;
-            this.cssContainer.style.width = w + 'px';
-            this.cssContainer.style.height = h + 'px';
-            if (this.scene) this.scene.camera.updateAspect(w, h);
-        }
-
-        _bindEvents() {
-            document.addEventListener('keydown', e => { this.keys[e.key] = true; });
-            document.addEventListener('keyup', e => { this.keys[e.key] = false; });
-            this.cssContainer.addEventListener('click', () => {
-                try { this.cssContainer.requestPointerLock(); } catch (e) {}
-            });
-            document.addEventListener('pointerlockchange', () => {
-                this.mouse.locked = document.pointerLockElement === this.cssContainer;
-            });
-            document.addEventListener('mousemove', e => {
-                if (this.mouse.locked) {
-                    this.mouse.deltaX += e.movementX;
-                    this.mouse.deltaY += e.movementY;
-                }
-            });
-        }
-
-        setScene(scene) {
-            if (this.scene) this.cssContainer.removeChild(this.scene.group);
-            this.scene = scene;
-            if (scene) {
-                this.cssContainer.style.background = scene.background || '#1a1a2e';
-                this.cssContainer.appendChild(scene.group);
-                if (scene.camera) scene.camera.updateAspect(this.canvas.width, this.canvas.height);
-            }
-        }
-
-        start() {
-            if (this.running) return;
-            this.running = true;
-            this.lastTime = performance.now();
-            this._loop();
-        }
-
-        stop() { this.running = false; }
-
-        _loop() {
-            if (!this.running) return;
-            const now = performance.now();
-            this.deltaTime = Math.min((now - this.lastTime) / 1000, 0.05);
-            this.lastTime = now;
-
-            if (this.scene) {
-                this.scene.update(this.deltaTime);
-                this.scene.render();
-            }
-            this._renderCanvas();
-            requestAnimationFrame(() => this._loop());
-        }
-
-        _renderCanvas() {
-            const ctx = this.ctx;
-            const w = this.canvas.width;
-            const h = this.canvas.height;
-            ctx.clearRect(0, 0, w, h);
-
-            ctx.fillStyle = 'rgba(255,255,255,0.7)';
-            ctx.font = '16px monospace';
-            ctx.fillText(`Prewbalus 2.0 | FPS: ${Math.round(1 / this.deltaTime)}`, 20, 30);
-            if (this.scene) {
-                ctx.fillText(`Objects: ${this.scene.objects.length}`, 20, 50);
-            }
-            if (this.scene && typeof this.scene.canvasRender === 'function') {
-                this.scene.canvasRender(ctx, w, h);
-            }
-        }
-
-        loadTexture(url, callback) {
-            const img = new Image();
-            img.onload = () => { callback && callback(img); };
-            img.src = url;
-        }
-        loadAudio(url, callback) { this.audio.load(url, callback); }
-        raycastFromCamera() {
-            if (!this.scene) return [];
-            const cam = this.scene.camera;
-            const origin = cam.position.clone();
-            const dir = cam.getForward();
-            this.scene.raycaster.set(origin, dir);
-            return this.scene.raycaster.intersectObjects(this.scene.objects);
+        updateMatrix() {
+            let m = MathUtils.identity();
+            // translate
+            m = MathUtils.translate(m, this.position[0], this.position[1], this.position[2]);
+            // rotate (simple Euler XYZ)
+            const rx = this.rotation[0], ry = this.rotation[1], rz = this.rotation[2];
+            const cx = Math.cos(rx), sx = Math.sin(rx);
+            const cy = Math.cos(ry), sy = Math.sin(ry);
+            const cz = Math.cos(rz), sz = Math.sin(rz);
+            const rot = [
+                cy*cz, -cy*sz, sy, 0,
+                sx*sy*cz + cx*sz, -sx*sy*sz + cx*cz, -sx*cy, 0,
+                -cx*sy*cz + sx*sz, cx*sy*sz + sx*cz, cx*cy, 0,
+                0,0,0,1
+            ];
+            m = MathUtils.multiply(m, rot);
+            // scale
+            m[0] *= this.scale[0]; m[1] *= this.scale[0]; m[2] *= this.scale[0];
+            m[4] *= this.scale[1]; m[5] *= this.scale[1]; m[6] *= this.scale[1];
+            m[8] *= this.scale[2]; m[9] *= this.scale[2]; m[10] *= this.scale[2];
+            this.modelMatrix = m;
         }
     }
 
-    // ==================== صادرات ====================
-    global.Prewbalus = {
-        Engine,
+    // ---------- مواد و شیدرها ----------
+    const vertexShaderSource = `
+        #version 300 es
+        in vec3 aPosition;
+        in vec3 aNormal;
+        in vec2 aUV;
+        uniform mat4 uModel;
+        uniform mat4 uView;
+        uniform mat4 uProjection;
+        uniform mat4 uNormalMatrix;
+        out vec3 vNormal;
+        out vec3 vPosition;
+        out vec2 vUV;
+        void main() {
+            vec4 worldPos = uModel * vec4(aPosition, 1.0);
+            vPosition = worldPos.xyz;
+            vNormal = mat3(uNormalMatrix) * aNormal;
+            vUV = aUV;
+            gl_Position = uProjection * uView * worldPos;
+        }
+    `;
+
+    const fragmentShaderSource = `
+        #version 300 es
+        precision highp float;
+        in vec3 vNormal;
+        in vec3 vPosition;
+        in vec2 vUV;
+        uniform vec3 uColor;
+        uniform vec3 uAmbient;
+        uniform vec3 uLightDir;
+        uniform vec3 uLightColor;
+        uniform float uLightIntensity;
+        uniform vec3 uCameraPos;
+        out vec4 fragColor;
+        void main() {
+            vec3 normal = normalize(vNormal);
+            vec3 lightDir = normalize(uLightDir);
+            float diff = max(dot(normal, lightDir), 0.0);
+            vec3 diffuse = uLightColor * uLightIntensity * diff;
+            vec3 ambient = uAmbient * 0.5;
+            // specular (Blinn-Phong)
+            vec3 viewDir = normalize(uCameraPos - vPosition);
+            vec3 halfVec = normalize(lightDir + viewDir);
+            float spec = pow(max(dot(normal, halfVec), 0.0), 32.0);
+            vec3 specular = uLightColor * uLightIntensity * spec * 0.5;
+            vec3 color = uColor * (ambient + diffuse) + specular;
+            fragColor = vec4(color, 1.0);
+        }
+    `;
+
+    // شیدر مخصوص depth map (برای سایه)
+    const depthVertexShader = `
+        #version 300 es
+        in vec3 aPosition;
+        uniform mat4 uModel;
+        uniform mat4 uLightViewProj;
+        void main() {
+            gl_Position = uLightViewProj * uModel * vec4(aPosition, 1.0);
+        }
+    `;
+    const depthFragmentShader = `
+        #version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        void main() {
+            fragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
+        }
+    `;
+
+    // ---------- رندرر ----------
+    class Renderer {
+        constructor(canvas) {
+            this.canvas = canvas;
+            const gl = canvas.getContext('webgl2', { antialias: true, depth: true, stencil: false });
+            if (!gl) throw new Error('WebGL2 not supported');
+            this.gl = gl;
+            this.clearColor = [0.1, 0.1, 0.2, 1.0];
+            // compile shaders
+            this.mainProgram = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+            this.depthProgram = createProgram(gl, depthVertexShader, depthFragmentShader);
+            // uniforms locations
+            this.uModel = gl.getUniformLocation(this.mainProgram, 'uModel');
+            this.uView = gl.getUniformLocation(this.mainProgram, 'uView');
+            this.uProjection = gl.getUniformLocation(this.mainProgram, 'uProjection');
+            this.uNormalMatrix = gl.getUniformLocation(this.mainProgram, 'uNormalMatrix');
+            this.uColor = gl.getUniformLocation(this.mainProgram, 'uColor');
+            this.uAmbient = gl.getUniformLocation(this.mainProgram, 'uAmbient');
+            this.uLightDir = gl.getUniformLocation(this.mainProgram, 'uLightDir');
+            this.uLightColor = gl.getUniformLocation(this.mainProgram, 'uLightColor');
+            this.uLightIntensity = gl.getUniformLocation(this.mainProgram, 'uLightIntensity');
+            this.uCameraPos = gl.getUniformLocation(this.mainProgram, 'uCameraPos');
+            // depth
+            this.depthModel = gl.getUniformLocation(this.depthProgram, 'uModel');
+            this.depthLightViewProj = gl.getUniformLocation(this.depthProgram, 'uLightViewProj');
+
+            // create shadow framebuffer
+            const shadowSize = 1024;
+            this.shadowFBO = gl.createFramebuffer();
+            this.shadowTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, shadowSize, shadowSize, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowFBO);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.shadowTex, 0);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            this.shadowSize = shadowSize;
+        }
+
+        render(scene, camera) {
+            const gl = this.gl;
+            const w = this.canvas.width, h = this.canvas.height;
+            gl.viewport(0, 0, w, h);
+            gl.clearColor(this.clearColor[0], this.clearColor[1], this.clearColor[2], this.clearColor[3]);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.enable(gl.DEPTH_TEST);
+
+            // ----- مرحله 1: رندر سایه (depth map) -----
+            const dirLight = scene.lights.find(l => l.type === 'directional');
+            if (dirLight) {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowFBO);
+                gl.viewport(0, 0, this.shadowSize, this.shadowSize);
+                gl.clear(gl.DEPTH_BUFFER_BIT);
+                gl.useProgram(this.depthProgram);
+                const lightPos = dirLight.position;
+                const lightTarget = [0,0,0];
+                const up = [0,1,0];
+                const lightView = MathUtils.lookAt(lightPos, lightTarget, up);
+                const lightProj = MathUtils.perspective(0.8, 1, 0.1, 30);
+                const lightViewProj = MathUtils.multiply(lightProj, lightView);
+                for (const mesh of scene.meshes) {
+                    gl.uniformMatrix4fv(this.depthModel, false, mesh.modelMatrix);
+                    gl.uniformMatrix4fv(this.depthLightViewProj, false, lightViewProj);
+                    this.drawMeshDepth(mesh);
+                }
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.viewport(0, 0, w, h);
+            }
+
+            // ----- مرحله 2: رندر اصلی با سایه -----
+            gl.useProgram(this.mainProgram);
+            const viewMat = camera.getViewMatrix();
+            const projMat = camera.projectionMatrix;
+            gl.uniformMatrix4fv(this.uView, false, viewMat);
+            gl.uniformMatrix4fv(this.uProjection, false, projMat);
+            gl.uniform3fv(this.uCameraPos, camera.position);
+
+            const ambient = scene.ambientColor;
+            gl.uniform3fv(this.uAmbient, ambient);
+            if (dirLight) {
+                const dir = dirLight.position;
+                const len = Math.hypot(dir[0], dir[1], dir[2]);
+                gl.uniform3fv(this.uLightDir, [dir[0]/len, dir[1]/len, dir[2]/len]);
+                gl.uniform3fv(this.uLightColor, dirLight.color);
+                gl.uniform1f(this.uLightIntensity, dirLight.intensity);
+            } else {
+                gl.uniform3fv(this.uLightDir, [0.5, 0.5, 0.5]);
+                gl.uniform3fv(this.uLightColor, [1,1,1]);
+                gl.uniform1f(this.uLightIntensity, 0.5);
+            }
+
+            for (const mesh of scene.meshes) {
+                mesh.updateMatrix();
+                gl.uniformMatrix4fv(this.uModel, false, mesh.modelMatrix);
+                const nm = this.computeNormalMatrix(mesh.modelMatrix);
+                gl.uniformMatrix4fv(this.uNormalMatrix, false, nm);
+                gl.uniform3fv(this.uColor, mesh.material.color);
+                this.drawMesh(mesh);
+            }
+        }
+
+        drawMesh(mesh) {
+            const gl = this.gl;
+            const geo = mesh.geometry;
+            if (!geo.buffers) return;
+            const { position, normal, uv, index } = geo.buffers;
+            gl.bindBuffer(gl.ARRAY_BUFFER, position);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+            if (normal) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, normal);
+                gl.enableVertexAttribArray(1);
+                gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+            }
+            if (uv) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, uv);
+                gl.enableVertexAttribArray(2);
+                gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+            }
+            if (index) {
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
+                gl.drawElements(gl.TRIANGLES, index.count, gl.UNSIGNED_SHORT, 0);
+            } else {
+                gl.drawArrays(gl.TRIANGLES, 0, position.count);
+            }
+        }
+
+        drawMeshDepth(mesh) {
+            const gl = this.gl;
+            const geo = mesh.geometry;
+            if (!geo.buffers) return;
+            const { position, index } = geo.buffers;
+            gl.bindBuffer(gl.ARRAY_BUFFER, position);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+            if (index) {
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
+                gl.drawElements(gl.TRIANGLES, index.count, gl.UNSIGNED_SHORT, 0);
+            } else {
+                gl.drawArrays(gl.TRIANGLES, 0, position.count);
+            }
+        }
+
+        computeNormalMatrix(model) {
+            // برای سادگی، فرض می‌کنیم uniform scale پس transpose(inverse) ~ inverse transpose
+            return model.slice();
+        }
+    }
+
+    // ---------- هندسه‌های آماده ----------
+    function createBoxGeometry(width, height, depth) {
+        const w = width/2, h = height/2, d = depth/2;
+        const positions = [
+            -w,-h,-d,  w,-h,-d,  w,h,-d, -w,h,-d, // front
+            -w,-h,d,  w,-h,d,  w,h,d, -w,h,d, // back
+            -w,-h,-d, -w,h,-d, -w,h,d, -w,-h,d, // left
+            w,-h,-d, w,h,-d, w,h,d, w,-h,d, // right
+            -w,h,-d, w,h,-d, w,h,d, -w,h,d, // top
+            -w,-h,-d, w,-h,-d, w,-h,d, -w,-h,d  // bottom
+        ];
+        const normals = [
+            0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1,
+            0,0,1, 0,0,1, 0,0,1, 0,0,1,
+            -1,0,0, -1,0,0, -1,0,0, -1,0,0,
+            1,0,0, 1,0,0, 1,0,0, 1,0,0,
+            0,1,0, 0,1,0, 0,1,0, 0,1,0,
+            0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0
+        ];
+        const indices = [];
+        for (let i=0; i<6; i++) {
+            const base = i*4;
+            indices.push(base, base+1, base+2, base, base+2, base+3);
+        }
+        return { positions, normals, indices };
+    }
+
+    // ---------- نور ----------
+    class DirectionalLight {
+        constructor(color, intensity, position) {
+            this.type = 'directional';
+            this.color = color;
+            this.intensity = intensity;
+            this.position = position;
+        }
+    }
+
+    // ---------- خروجی ----------
+    global.ScrollEngine = {
         Scene,
         Camera,
-        Object3D,
         Mesh,
-        Sprite,
-        BoxGeometry,
-        PlaneGeometry,
-        Material,
-        Vector3,
-        Euler,
-        PhysicsBody,
-        Collision,
-        Raycaster,
-        FPSController,
-        ParticleEmitter,
-        AudioSystem
+        Renderer,
+        DirectionalLight,
+        createBoxGeometry,
+        MathUtils,
+        CDN_BASE   // expose the CDN base URL
     };
 
 })(window);
-
-console.log('✅ Prewbalus 2.0 با پرسپکتیو ۲۰۰px بارگذاری شد!');
