@@ -1,6 +1,6 @@
 // ================================================================
 // scrollwroks.js - موتور بازی WebGL2 مستقل
-// CDN Address: https://cdn.jsdelivr.net/scrollstudio/u/scrollwroks.js
+// by Gamebizixer Team.
 // ===============================================================
 (function(global) {
     'use strict';
