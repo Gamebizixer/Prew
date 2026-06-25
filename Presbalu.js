@@ -1,6 +1,6 @@
 // ================================================================
 // scrollwroks.js - موتور بازی WebGL2 مستقل
-// CDN Address: https://cdn.jsdelivr.net/scrollstudio/scrollwroks.js
+// CDN Address: https://cdn.jsdelivr.net/scrollstudio/u/scrollwroks.js
 // ================================================================
 
 // این ثابت را می‌توانید برای بارگذاری Assets از همان CDN استفاده کنید
