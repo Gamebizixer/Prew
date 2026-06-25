@@ -2,6 +2,7 @@
 // scrollwroks.js - موتور بازی WebGL2 مستقل
 // by Gamebizixer Team.
 // ===============================================================
+
 (function(global) {
     'use strict';
 
